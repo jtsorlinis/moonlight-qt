@@ -221,6 +221,10 @@ private:
 
     void performSpecialKeyCombo(KeyCombo combo);
 
+    void deferGuiKey(SDL_KeyboardEvent* event, short keyCode);
+
+    bool sendDeferredGuiKey(SDL_KeyboardEvent* event);
+
     struct HostCursorShape {
         int width;
         int height;
@@ -300,6 +304,7 @@ private:
     int m_GamepadMask;
     GamepadState m_GamepadState[MAX_GAMEPADS];
     QSet<short> m_KeysDown;
+    short m_DeferredGuiKey;
     bool m_FakeMouseCaptureActive;
     bool m_KeyboardCaptureActive;
     QString m_OldIgnoreDevices;

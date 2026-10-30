@@ -212,6 +212,47 @@ void SdlInputHandler::performSpecialKeyCombo(KeyCombo combo)
     }
 }
 
+// Without system key capture, macOS keeps the Cmd shortcuts it uses itself (Cmd+Tab,
+// Cmd+Space) and we never see their second key. Sending Cmd straight away would leave
+// a lone Windows key press on the host, which opens the Start menu, so Cmd is held
+// back until another key reaches us. Other client OSes act on the Windows key
+// themselves, so it isn't sent at all there.
+void SdlInputHandler::deferGuiKey(SDL_KeyboardEvent* event, short keyCode)
+{
+#ifdef Q_OS_DARWIN
+    if (event->state == SDL_PRESSED) {
+        m_DeferredGuiKey = keyCode;
+    }
+    else if (m_DeferredGuiKey == keyCode) {
+        // Cmd was tapped on its own, so tap the Windows key
+        m_DeferredGuiKey = 0;
+        LiSendKeyboardEvent2(0x8000 | keyCode, KEY_ACTION_DOWN, MODIFIER_META, 0);
+        LiSendKeyboardEvent2(0x8000 | keyCode, KEY_ACTION_UP, 0, 0);
+    }
+    else if (m_KeysDown.remove(keyCode)) {
+        LiSendKeyboardEvent2(0x8000 | keyCode, KEY_ACTION_UP, 0, 0);
+    }
+#else
+    Q_UNUSED(event);
+    Q_UNUSED(keyCode);
+#endif
+}
+
+// Sends a deferred Cmd key once another key goes down with it.
+// Returns true if the host has a Windows key down.
+bool SdlInputHandler::sendDeferredGuiKey(SDL_KeyboardEvent* event)
+{
+    if (m_DeferredGuiKey != 0 && event->state == SDL_PRESSED &&
+            event->keysym.scancode != SDL_SCANCODE_LGUI &&
+            event->keysym.scancode != SDL_SCANCODE_RGUI) {
+        m_KeysDown.insert(m_DeferredGuiKey);
+        LiSendKeyboardEvent2(0x8000 | m_DeferredGuiKey, KEY_ACTION_DOWN, MODIFIER_META, 0);
+        m_DeferredGuiKey = 0;
+    }
+
+    return m_KeysDown.contains(0x5B) || m_KeysDown.contains(0x5C);
+}
+
 void SdlInputHandler::handleKeyEvent(SDL_KeyboardEvent* event)
 {
     short keyCode;
@@ -267,7 +308,7 @@ void SdlInputHandler::handleKeyEvent(SDL_KeyboardEvent* event)
         modifiers |= MODIFIER_SHIFT;
     }
     if (event->keysym.mod & KMOD_GUI) {
-        if (isSystemKeyCaptureActive()) {
+        if (isSystemKeyCaptureActive() || sendDeferredGuiKey(event)) {
             modifiers |= MODIFIER_META;
         }
     }
@@ -413,12 +454,14 @@ void SdlInputHandler::handleKeyEvent(SDL_KeyboardEvent* event)
                 break;
             case SDL_SCANCODE_LGUI:
                 if (!isSystemKeyCaptureActive()) {
+                    deferGuiKey(event, 0x5B);
                     return;
                 }
                 keyCode = 0x5B;
                 break;
             case SDL_SCANCODE_RGUI:
                 if (!isSystemKeyCaptureActive()) {
+                    deferGuiKey(event, 0x5C);
                     return;
                 }
                 keyCode = 0x5C;
