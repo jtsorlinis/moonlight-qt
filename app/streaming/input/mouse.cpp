@@ -13,6 +13,11 @@ void SdlInputHandler::handleMouseButtonEvent(SDL_MouseButtonEvent* event)
     // Automatic mouse mode sees the new button state once this event is handled
     auto noteButtons = qScopeGuard([this] { noteMouseButtons(); });
 
+    // A Cmd+click isn't a lone Cmd tap, so it mustn't open the Start menu
+    if (event->state == SDL_PRESSED) {
+        m_DeferredGuiKey = 0;
+    }
+
     if (event->which == SDL_TOUCH_MOUSEID) {
         // Ignore synthetic mouse events
         return;
